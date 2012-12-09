@@ -8,7 +8,7 @@ import datetime
 import struct
 
 OLE_TIME_ZERO = datetime.datetime(1899, 12, 30, 0, 0, 0)
-RECORD_STRUCT = struct.Struct('dffffLLLL')
+RECORD_STRUCT = struct.Struct('<dffffLLLL')
 
 class ScidRecord(object):
     def __init__(self, DateTime, Open, High, Low, Close, NumTrades, TotalVolume, BidVolume, AskVolume):

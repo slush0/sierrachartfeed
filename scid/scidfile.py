@@ -74,7 +74,7 @@ import datetime
 from scidexception import ScidException
 from scidrecord import ScidRecord, RECORD_STRUCT
 
-HEADER_STRUCT = struct.Struct('4sLLHHL36s')
+HEADER_STRUCT = struct.Struct('<4sLLHHL36s')
  
 class ScidFile(object):
     def __init__(self, zone=0):

@@ -39,7 +39,7 @@ def bitcoincharts_history(symbol, from_timestamp, volume_precision, log=False):
             timestamp, price, volume = int(line[0]), float(line[1]), int(float(line[2])*10**volume_precision)
             if log:
                 print symbol, datetime.datetime.fromtimestamp(timestamp), timestamp, price, float(volume)/10**volume_precision
-            yield ScidRecord(datetime.datetime.fromtimestamp(timestamp), price, price, price, price, volume, volume, 0, 0)
+            yield ScidRecord(datetime.datetime.fromtimestamp(timestamp), price, price, price, price, 1, volume, 0, 0)
         except ValueError:
             print line
             print "Corrupted data for symbol %s, skipping" % symbol
@@ -95,7 +95,7 @@ class ScidHandler(object):
         
         # Datetime, Open, High, Low, Close, NumTrades, TotalVolume, BidVolume, AskVolume):
         try:
-            rec = ScidRecord(date, price, price, price, price, volume, volume, 0, 0)
+            rec = ScidRecord(date, price, price, price, price, 1, volume, 0, 0)
             self.scid.write(rec.to_struct())
             self.scid.fp.flush()
         except Exception as e:

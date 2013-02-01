@@ -136,7 +136,8 @@ class ScidLoader(dict):
          
 if __name__ == '__main__':
     parser = OptionParser()
-    parser.add_option("-d", "--datadir", dest="datadir", default='c:/SierraChart/data/',
+    parser.add_option("-d", "--datadir", dest="datadir", default = os.getenv("HOME")
+                  + '/.wine/drive_c/SierraChart/Data/',
                   help="Data directory of SierraChart software")
     parser.add_option("-y", "--disable-history", action='store_true', default=False,
                   help="Disable downloads from bitcoincharts.com")

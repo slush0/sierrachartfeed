@@ -26,25 +26,29 @@ BITCOINCHARTS_TRADES_URL = 'http://bitcoincharts.com/t/trades.csv'
 BITCOINCHARTS_SOCKET = ('bitcoincharts.com', 8002)
 
 def bitcoincharts_history(symbol, from_timestamp, volume_precision, log=False):
-    url = '%s?start=%s&end=99999999999999&symbol=%s' % (BITCOINCHARTS_TRADES_URL, from_timestamp, symbol)
-    #print url
-    req = urllib2.Request(url)
-    for line in urllib2.urlopen(req).read().split('\n'):
-        if not line:
-            continue
-        
-        line = line.split(',')
-        
-        try:
-            timestamp, price, volume = int(line[0]), float(line[1]), int(float(line[2])*10**volume_precision)
-            if log:
-                print symbol, datetime.datetime.fromtimestamp(timestamp), timestamp, price, float(volume)/10**volume_precision
-            yield ScidRecord(datetime.datetime.fromtimestamp(timestamp), price, price, price, price, 1, volume, 0, 0)
-        except ValueError:
-            print line
-            print "Corrupted data for symbol %s, skipping" % symbol
-        
-        
+    #fetch 1 week at a time until we get to next week
+    prev_timestamp = from_timestamp
+    next_timestamp = from_timestamp + 604800
+    while (next_timestamp <= time.time())
+        url = '%s?start=%s&end=%s&symbol=%s' % (BITCOINCHARTS_TRADES_URL, prev_timestamp, next_timestamp, symbol)
+        #print url
+        req = urllib2.Request(url)
+        for line in urllib2.urlopen(req).read().split('\n'):
+            if not line:
+                continue
+            
+            line = line.split(',')
+            
+            try:
+                timestamp, price, volume = int(line[0]), float(line[1]), int(float(line[2])*10**volume_precision)
+                if log:
+                    print symbol, datetime.datetime.fromtimestamp(timestamp), timestamp, price, float(volume)/10**volume_precision
+                yield ScidRecord(datetime.datetime.fromtimestamp(timestamp), price, price, price, price, 1, volume, 0, 0)
+            except ValueError:
+                print line
+                print "Corrupted data for symbol %s, skipping" % symbol
+        prev_timestamp = next_timestamp    
+        next_timestamp = next_timestamp + 604800
         
 class ScidHandler(object):
     def __init__(self, symbol, datadir, disable_history, volume_precision):

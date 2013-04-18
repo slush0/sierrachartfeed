@@ -22,12 +22,12 @@ except ImportError:
 
 from scid import ScidFile, ScidRecord
 
-BITCOINCHARTS_TRADES_URL = 'http://bitcoincharts.com/t/trades.csv'
+BITCOINCHARTS_TRADES_URL = 'http://api.bitcoincharts.com/v1/trades.csv'
 BITCOINCHARTS_SOCKET = ('bitcoincharts.com', 8002)
+HISTORY_LENGTH = 15
 
 def bitcoincharts_history(symbol, from_timestamp, volume_precision, log=False):
-    url = '%s?start=%s&end=99999999999999&symbol=%s' % (BITCOINCHARTS_TRADES_URL, from_timestamp, symbol)
-    #print url
+    url = '%s?start=%s&symbol=%s' % (BITCOINCHARTS_TRADES_URL, from_timestamp, symbol)
     req = urllib2.Request(url)
     for line in urllib2.urlopen(req).read().split('\n'):
         if not line:
@@ -74,7 +74,8 @@ class ScidHandler(object):
         length = self.scid.length
         
         if not length:
-            from_timestamp = 0
+            # number of days of history * seconds per day
+            from_timestamp = int(time.time() - (HISTORY_LENGTH * 86400))
         else:
             self.scid.seek(self.scid.length-1)
             rec = ScidRecord.from_struct(self.scid.readOne())

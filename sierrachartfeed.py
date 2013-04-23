@@ -22,7 +22,7 @@ except ImportError:
 
 from scid import ScidFile, ScidRecord
 
-BITCOINCHARTS_TRADES_URL = 'http://bitcoincharts.com/t/trades.csv'
+BITCOINCHARTS_TRADES_URL = 'http://api.bitcoincharts.com/v1/trades.csv'
 BITCOINCHARTS_SOCKET = ('bitcoincharts.com', 8002)
 
 def bitcoincharts_history(symbol, from_timestamp, volume_precision, log=False):

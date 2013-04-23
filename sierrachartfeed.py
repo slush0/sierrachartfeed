@@ -14,6 +14,7 @@ import os
 import sys
 import urllib2
 import socket
+import collections
 
 try:
     import simplejson as json
@@ -25,11 +26,40 @@ from scid import ScidFile, ScidRecord
 BITCOINCHARTS_TRADES_URL = 'http://api.bitcoincharts.com/v1/trades.csv'
 BITCOINCHARTS_SOCKET = ('bitcoincharts.com', 8002)
 
-def bitcoincharts_history(symbol, from_timestamp, volume_precision, log=False):
-    url = '%s?start=%s&end=99999999999999&symbol=%s' % (BITCOINCHARTS_TRADES_URL, from_timestamp, symbol)
-    #print url
-    req = urllib2.Request(url)
-    for line in urllib2.urlopen(req).read().split('\n'):
+def bitcoincharts_history(symbol, from_timestamp, volume_precision, history_length, log=False):
+    # if there is no previous local history, default to downloading
+    # history_length days instead of the whole history
+    if from_timestamp == 0:
+        from_timestamp = time.time() - history_length * 24 * 60 * 60
+
+    oldest = time.time()
+    history = collections.deque()
+
+    # download history in chunks until we reach the chunk containing the
+    # earliest wanted timestamp
+    while oldest > from_timestamp:
+        url = '%s?end=%s&symbol=%s' % (BITCOINCHARTS_TRADES_URL, oldest - 1, symbol)
+        req = urllib2.Request(url)
+        chunk = urllib2.urlopen(req).read().split('\n')
+        history.extendleft(chunk)
+
+        # find the oldest trade in the current chunk
+        last = next(i for i in reversed(chunk) if i)
+        last = last.split(',')
+        try:
+            oldest = int(last[0])
+        except ValueError:
+            print last
+            print "Corrupted data for symbol %s, skipping" % symbol
+
+    # filter out trades older than the earliest wanted timestamp (if any)
+    history = filter(lambda t: int(t.split(',')[0]) > from_timestamp, history)
+
+    for rec in scid_from_csv(history, symbol, volume_precision, log):
+        yield rec
+
+def scid_from_csv(data, symbol, volume_precision, log=False):
+    for line in data:
         if not line:
             continue
         
@@ -44,13 +74,12 @@ def bitcoincharts_history(symbol, from_timestamp, volume_precision, log=False):
             print line
             print "Corrupted data for symbol %s, skipping" % symbol
         
-        
-        
 class ScidHandler(object):
-    def __init__(self, symbol, datadir, disable_history, volume_precision):
+    def __init__(self, symbol, datadir, disable_history, volume_precision, history_length):
         self.symbol = symbol
         self.filename = os.path.join(datadir, "%s.scid" % symbol)
         self.volume_precision = volume_precision
+        self.history_length = history_length
         self.load()
         if not disable_history:
             try:
@@ -82,7 +111,7 @@ class ScidHandler(object):
             
         print 'Downloading historical data'
         self.scid.seek(self.scid.length)
-        for rec in bitcoincharts_history(self.symbol, from_timestamp, self.volume_precision, True):
+        for rec in bitcoincharts_history(self.symbol, from_timestamp, self.volume_precision, self.history_length, True):
             self.scid.write(rec.to_struct())
         self.scid.fp.flush()
          
@@ -119,18 +148,19 @@ def linesplit(sock):
             yield line
 
 class ScidLoader(dict):
-    def __init__(self, datadir, disable_history, volume_precision):
+    def __init__(self, datadir, disable_history, volume_precision, history_length):
         super(ScidLoader, self).__init__() # Don't use any template dict
         
         self.datadir = datadir
         self.disable_history = disable_history
         self.volume_precision = volume_precision
+        self.history_length = history_length
         
     def __getitem__(self, symbol):
         try:
             return dict.__getitem__(self, symbol)
         except KeyError:
-            handler = ScidHandler(symbol, self.datadir, self.disable_history, self.volume_precision)
+            handler = ScidHandler(symbol, self.datadir, self.disable_history, self.volume_precision, self.history_length)
             self[symbol] = handler
             return handler
          
@@ -142,10 +172,32 @@ if __name__ == '__main__':
                   help="Disable downloads from bitcoincharts.com")
     parser.add_option("-p", "--volume-precision", default=2, dest="precision", type="int",
                   help="Change decimal precision for market volume.")
+    parser.add_option("-l", "--history-length", default=10, dest="length", type="int",
+                  help="History length to fetch in days (default is 10 days)")
     parser.add_option("-s", "--symbols", dest='symbols', default='mtgoxUSD,*',
                   help="Charts to watch, comma separated. Use * for streaming all markets.")
+    parser.add_option("-b", "--bootstrap", dest="bootstrap", default=None, metavar="FILE",
+                  help="Bootstrap history from a .csv file")
 
     (options, args) = parser.parse_args()
+
+    if options.bootstrap:
+        base_filename, _, _ = options.bootstrap.rpartition('.')
+        scid_filename = "%s.scid" % base_filename
+
+        if os.path.exists(scid_filename):
+            print "{} already exists, aborting bootstrap.".format(scid_filename)
+            sys.exit()
+
+        with open(options.bootstrap) as f:
+            data = f.read().split("\n")
+            scid = ScidFile.create(scid_filename)
+            for rec in scid_from_csv(data, base_filename, options.precision):
+                scid.write(rec.to_struct())
+            scid.fp.flush()
+            scid.close()
+            print "Bootstrap finished."
+            sys.exit()
 
     if options.precision < 0 or options.precision > 8:
         print "Precision must be between 0 and 8"
@@ -153,7 +205,7 @@ if __name__ == '__main__':
 
     # Symbols to watch    
     symbols = options.symbols.split(',')
-    scids = ScidLoader(options.datadir, options.disable_history, options.precision)
+    scids = ScidLoader(options.datadir, options.disable_history, options.precision, options.length)
             
     for s in symbols:
         if s != '*':

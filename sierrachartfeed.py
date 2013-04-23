@@ -29,7 +29,9 @@ def bitcoincharts_history(symbol, from_timestamp, volume_precision, log=False):
     url = '%s?start=%s&end=99999999999999&symbol=%s' % (BITCOINCHARTS_TRADES_URL, from_timestamp, symbol)
     #print url
     req = urllib2.Request(url)
-    for line in urllib2.urlopen(req).read().split('\n'):
+    list1 = urllib2.urlopen(req).read().split('\n')
+    list1.sort()
+    for line in list1:
         if not line:
             continue
         

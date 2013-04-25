@@ -9,7 +9,7 @@ Created on 14.04.2011
 
 from optparse import OptionParser
 from itertools import takewhile, dropwhile
-import datetime
+from datetime import datetime
 import time
 import os
 import sys
@@ -39,38 +39,64 @@ def bitcoincharts_history(symbol, from_timestamp, volume_precision, history_leng
     def extract_timestamp(t):
         return int(t.split(',')[0])
 
+    # begin by requesting a day's worth of data
+    timespan = 24 * 60 * 60
+
     # download history in chunks until we reach the chunk containing the
     # earliest wanted timestamp
     while oldest > from_timestamp:
-        url = '%s?end=%s&symbol=%s' % (BITCOINCHARTS_TRADES_URL, oldest, symbol)
-        req = urllib2.Request(url)
+        while True:
+            try:
+                url = '%s?start=%s&end=%s&symbol=%s' % (BITCOINCHARTS_TRADES_URL, oldest - timespan, oldest, symbol)
+                req = urllib2.Request(url)
+                chunk = urllib2.urlopen(req).read().strip()
 
-        chunk = urllib2.urlopen(req).read().strip()
-
-        if not chunk:
-            print "Empty chunk received."
-            continue
+                if not chunk:
+                    if log:
+                        print "Empty chunk received, retrying..."
+                    oldest -= timespan
+                    timespan *= 2
+                    continue
+            except urllib2.HTTPError as e:
+                if log:
+                    print "HTTP error: {}, retrying...".format(e.code)
+                if timespan > 60:
+                    timespan /= 2
+                time.sleep(5)
+            else:
+                break
 
         chunk = chunk.split('\n')
+
+        if log:
+            print "Fetched {} trades (end={} [{}])".format(len(chunk), oldest,
+                                                           datetime.fromtimestamp(oldest))
 
         # generator to filter out empty lines (if any)
         trades = (i for i in reversed(chunk) if i)
 
         while True:
-        try:
+            try:
                 # find the oldest timestamp in the current chunk
                 oldest = extract_timestamp(next(trades))
-        except ValueError:
+            except ValueError:
                 print oldest
                 print "Corrupted timestamp detected for symbol %s, skipping" % symbol
                 continue
-            break
+            else:
+                break
 
-        # Drop trades with the oldest timestamp since we might not have
-        # received all trades containing it and thus would end up ignoring some
-        # trades; we will re-request this timestamp in the next chunk.
-        chunk = takewhile(lambda t: extract_timestamp(t) != oldest, chunk)
-        
+        # If we have received more than one unique timestamp, drop trades with
+        # the oldest timestamp since we might not have received all trades
+        # containing it and thus would end up ignoring some trades; we will
+        # re-request this timestamp in the next chunk.  Otherwise, increase the
+        # timespan since we need at least two unique timestamps to guarantee we
+        # won't miss trades.
+        if len(set(extract_timestamp(trade) for trade in chunk)) > 1:
+            chunk = takewhile(lambda t: extract_timestamp(t) != oldest, chunk)
+        else:
+            timespan *= 2
+
         history.extendleft(chunk)
 
     # filter out trades older than the earliest wanted timestamp (if any)
@@ -89,8 +115,8 @@ def scid_from_csv(data, symbol, volume_precision, log=False):
         try:
             timestamp, price, volume = int(line[0]), float(line[1]), int(float(line[2])*10**volume_precision)
             if log:
-                print symbol, datetime.datetime.fromtimestamp(timestamp), timestamp, price, float(volume)/10**volume_precision
-            yield ScidRecord(datetime.datetime.fromtimestamp(timestamp), price, price, price, price, 1, volume, 0, 0)
+                print symbol, datetime.fromtimestamp(timestamp), timestamp, price, float(volume)/10**volume_precision
+            yield ScidRecord(datetime.fromtimestamp(timestamp), price, price, price, price, 1, volume, 0, 0)
         except ValueError:
             print line
             print "Corrupted data for symbol %s, skipping" % symbol
@@ -139,8 +165,8 @@ class ScidHandler(object):
     def ticker_update(self, data):        
         price = float(data['price'])
         volume = int(float(data['volume'])*10**self.volume_precision)
-        date = datetime.datetime.fromtimestamp(float(data['timestamp']))
-        
+        date = datetime.fromtimestamp(float(data['timestamp']))
+
         print self.symbol, date, price, float(volume)/10**self.volume_precision
         
         # Datetime, Open, High, Low, Close, NumTrades, TotalVolume, BidVolume, AskVolume):

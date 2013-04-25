@@ -8,6 +8,7 @@ Created on 14.04.2011
 '''
 
 from optparse import OptionParser
+from itertools import takewhile, dropwhile
 import datetime
 import time
 import os
@@ -30,30 +31,50 @@ def bitcoincharts_history(symbol, from_timestamp, volume_precision, history_leng
     # if there is no previous local history, default to downloading
     # history_length days instead of the whole history
     if from_timestamp == 0:
-        from_timestamp = time.time() - history_length * 24 * 60 * 60
+        from_timestamp = int(time.time()) - history_length * 24 * 60 * 60
 
-    oldest = time.time()
+    oldest = int(time.time())
     history = collections.deque()
+
+    def extract_timestamp(t):
+        return int(t.split(',')[0])
 
     # download history in chunks until we reach the chunk containing the
     # earliest wanted timestamp
     while oldest > from_timestamp:
-        url = '%s?end=%s&symbol=%s' % (BITCOINCHARTS_TRADES_URL, oldest - 1, symbol)
+        url = '%s?end=%s&symbol=%s' % (BITCOINCHARTS_TRADES_URL, oldest, symbol)
         req = urllib2.Request(url)
-        chunk = urllib2.urlopen(req).read().split('\n')
+
+        chunk = urllib2.urlopen(req).read().strip()
+
+        if not chunk:
+            print "Empty chunk received."
+            continue
+
+        chunk = chunk.split('\n')
+
+        # generator to filter out empty lines (if any)
+        trades = (i for i in reversed(chunk) if i)
+
+        while True:
+        try:
+                # find the oldest timestamp in the current chunk
+                oldest = extract_timestamp(next(trades))
+        except ValueError:
+                print oldest
+                print "Corrupted timestamp detected for symbol %s, skipping" % symbol
+                continue
+            break
+
+        # Drop trades with the oldest timestamp since we might not have
+        # received all trades containing it and thus would end up ignoring some
+        # trades; we will re-request this timestamp in the next chunk.
+        chunk = takewhile(lambda t: extract_timestamp(t) != oldest, chunk)
+        
         history.extendleft(chunk)
 
-        # find the oldest trade in the current chunk
-        last = next(i for i in reversed(chunk) if i)
-        last = last.split(',')
-        try:
-            oldest = int(last[0])
-        except ValueError:
-            print last
-            print "Corrupted data for symbol %s, skipping" % symbol
-
     # filter out trades older than the earliest wanted timestamp (if any)
-    history = filter(lambda t: int(t.split(',')[0]) > from_timestamp, history)
+    history = dropwhile(lambda t: extract_timestamp(t) < from_timestamp, history)
 
     for rec in scid_from_csv(history, symbol, volume_precision, log):
         yield rec

@@ -39,6 +39,12 @@ def bitcoincharts_history(symbol, from_timestamp, volume_precision, history_leng
     def extract_timestamp(t):
         return int(t.split(',')[0])
 
+    def request(start, end, symbol):
+        url = '%s?start=%s&end=%s&symbol=%s' % (BITCOINCHARTS_TRADES_URL, start, end, symbol)
+        req = urllib2.Request(url)
+        chunk = urllib2.urlopen(req).read().strip()
+        return chunk
+
     # begin by requesting a day's worth of data
     timespan = 24 * 60 * 60
 
@@ -47,9 +53,7 @@ def bitcoincharts_history(symbol, from_timestamp, volume_precision, history_leng
     while oldest > from_timestamp:
         while True:
             try:
-                url = '%s?start=%s&end=%s&symbol=%s' % (BITCOINCHARTS_TRADES_URL, oldest - timespan, oldest, symbol)
-                req = urllib2.Request(url)
-                chunk = urllib2.urlopen(req).read().strip()
+                chunk = request(oldest - timespan, oldest, symbol)
 
                 if not chunk:
                     if log:
@@ -100,7 +104,19 @@ def bitcoincharts_history(symbol, from_timestamp, volume_precision, history_leng
         history.extendleft(chunk)
 
     # filter out trades older than the earliest wanted timestamp (if any)
-    history = dropwhile(lambda t: extract_timestamp(t) < from_timestamp, history)
+    history = list(dropwhile(lambda t: extract_timestamp(t) < from_timestamp, history))
+
+    # remove trades with the newest timestamp
+    last = extract_timestamp(history[-1])
+    while len(history) and extract_timestamp(history[-1]) == last:
+        history.pop()
+
+    # re-request from the last timestamp to the current time to make sure there
+    # is no gap before we continue
+    chunk = request(last, int(time.time()), symbol)
+    if chunk:
+        chunk = chunk.split("\n")
+        history.extend(chunk)
 
     for rec in scid_from_csv(history, symbol, volume_precision, log):
         yield rec

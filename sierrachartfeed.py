@@ -45,8 +45,9 @@ def bitcoincharts_history(symbol, from_timestamp, volume_precision, history_leng
         chunk = urllib2.urlopen(req).read().strip()
         return chunk
 
-    # begin by requesting a day's worth of data
-    timespan = 24 * 60 * 60
+    # initially request either a day's worth of data or all the data up to the
+    # present, whichever is less 
+    timespan = min([24 * 60 * 60, oldest - from_timestamp])
 
     # download history in chunks until we reach the chunk containing the
     # earliest wanted timestamp

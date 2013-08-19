@@ -131,6 +131,8 @@ def scid_from_csv(data, symbol, volume_precision, log=False):
         
         try:
             timestamp, price, volume = int(line[0]), float(line[1]), int(float(line[2])*10**volume_precision)
+            if volume < 0:
+                volume = 0 # Fixes corrupted data on some markets
             if log:
                 print symbol, datetime.fromtimestamp(timestamp), timestamp, price, float(volume)/10**volume_precision
             yield ScidRecord(datetime.fromtimestamp(timestamp), price, price, price, price, 1, volume, 0, 0)
@@ -183,6 +185,9 @@ class ScidHandler(object):
         price = float(data['price'])
         volume = int(float(data['volume'])*10**self.volume_precision)
         date = datetime.fromtimestamp(float(data['timestamp']))
+
+        # Fixes corrupted structure provided by some exchanges        
+        volume = 0 if volume < 0 else volume
 
         print self.symbol, date, price, float(volume)/10**self.volume_precision
         
